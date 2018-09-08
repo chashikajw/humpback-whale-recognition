@@ -11,12 +11,19 @@ import pickle
 import numpy as np
 from imagehash import phash
 from math import sqrt
+import gzip
 
-import sys
-old_stderr = sys.stderr
-sys.stderr = open(os.devnull, "w")
-import keras
-sys.stderr = old_stderr
+
+try:
+    import sys
+    old_stderr = sys.stderr
+    sys.stderr = open(os.devnull, "w")
+    import keras
+    sys.stderr = old_stderr
+except:
+    print("ds")
+
+
 
 import random
 from keras import backend as K
@@ -34,6 +41,8 @@ from keras.utils import Sequence
 from scipy.optimize import linear_sum_assignment
 
 from keras_tqdm import TQDMNotebookCallback
+
+import gzip
 
 tagged = dict([(p,w) for _,p,w in read_csv('../Bluewhale/train.csv').to_records()])
 submit = [p for _,p,_ in read_csv('../Bluewhale/sample_submission.csv').to_records()]
@@ -120,7 +129,7 @@ def show_whale(imgs, per_row=2):
     fig, axes = plt.subplots(rows,cols, figsize=(24//per_row*cols,24//per_row*rows))
     for ax in axes.flatten(): ax.axis('off')
     for i,(img,ax) in enumerate(zip(imgs, axes.flatten())): ax.imshow(img.convert('RGB'))
-    plt.show()
+    #plt.show()
 
 for h, ps in h2ps.items():
     if len(ps) > 2:
@@ -390,7 +399,6 @@ for w,hs in w2hs.items():
         w2hs[w] = sorted(hs)
 len(w2hs)
 
-
 # Find the list of training images, keep only whales with at least two images.
 train = [] # A list of training image ids
 for hs in w2hs.values():
@@ -412,12 +420,6 @@ for i,t in enumerate(train): t2i[t] = i
 
 len(train),len(w2ts)
 
-
-# First try to use lapjv Linear Assignment Problem solver as it is much faster.
-# At the time I am writing this, kaggle kernel with custom package fail to commit.
-# scipy can be used as a fallback, but it is too slow to run this kernel under the time limit
-# As a workaround, use scipy with data partitioning.
-# Because algorithm is O(n^3), small partitions are much faster, but not what produced the submitted solution
 try:
     from lap import lapjv
     segment = False
@@ -508,11 +510,13 @@ class TrainingData(Sequence):
     def __len__(self):
         return (len(self.match) + len(self.unmatch) + self.batch_size - 1)//self.batch_size
 
+
     # Test on a batch of 32 with random costs.
 score = np.random.random_sample(size=(len(train),len(train)))
 data = TrainingData(score)
 (a, b), c = data[0]
 a.shape, b.shape, c.shape
+
 
 # First pair is for matching whale
 imgs = [array_to_img(a[0]), array_to_img(b[0])]
@@ -572,8 +576,6 @@ class ScoreGen(Sequence):
         return [a,b]
     def __len__(self):
         return (len(self.ix) + self.batch_size - 1)//self.batch_size
-
-
 
 def set_lr(model, lr):
     K.set_value(model.optimizer.lr, float(lr))
@@ -659,8 +661,8 @@ model_name = 'mpiotte-standard'
 histories  = []
 steps      = 0
 
-if isfile('mpiotte-standard.model'):
-    tmp = keras.models.load_model('mpiotte-standard.model')
+if isfile('../Bluewhale/mpiotte-standard.model'):
+    tmp = keras.models.load_model('../Bluewhale/mpiotte-standard.model')
     model.set_weights(tmp.get_weights())
 else:
     # epoch -> 10
@@ -696,3 +698,66 @@ else:
     set_lr(model, 1e-5)
     for _ in range(2): make_steps(5, 0.25)
     model.save('mpiotte-standard.model')
+
+
+
+def prepare_submission(threshold, filename):
+    """
+    Generate a Kaggle submission file.
+    @param threshold the score given to 'new_whale'
+    @param filename the submission file name
+    """
+    vtop  = 0
+    vhigh = 0
+    pos   = [0,0,0,0,0,0]
+    with gzip.open(filename, 'wt', newline='\n') as f:
+        f.write('Image,Id\n')
+        for i,p in enumerate(tqdm_notebook(submit)):
+            t = []
+            s = set()
+            a = score[i,:]
+            for j in list(reversed(np.argsort(a))):
+                h = known[j]
+                if a[j] < threshold and new_whale not in s:
+                    pos[len(t)] += 1
+                    s.add(new_whale)
+                    t.append(new_whale)
+                    if len(t) == 5: break;
+                for w in h2ws[h]:
+                    assert w != new_whale
+                    if w not in s:
+                        if a[j] > 1.0:
+                            vtop += 1
+                        elif a[j] >= threshold:
+                            vhigh += 1
+                        s.add(w)
+                        t.append(w)
+                        if len(t) == 5: break;
+                if len(t) == 5: break;
+            if new_whale not in s: pos[5] += 1
+            assert len(t) == 5 and len(s) == 5
+            f.write(p + ',' + ' '.join(t[:5]) + '\n')
+    return vtop,vhigh,pos
+
+if False:
+    # Find elements from training sets not 'new_whale'
+    h2ws = {}
+    for p,w in tagged.items():
+        if w != new_whale: # Use only identified whales
+            h = p2h[p]
+            if h not in h2ws: h2ws[h] = []
+            if w not in h2ws[h]: h2ws[h].append(w)
+    known = sorted(list(h2ws.keys()))
+
+    # Dictionary of picture indices
+    h2i   = {}
+    for i,h in enumerate(known): h2i[h] = i
+
+    # Evaluate the model.
+    fknown  = branch_model.predict_generator(FeatureGen(known), max_queue_size=20, workers=10, verbose=0)
+    fsubmit = branch_model.predict_generator(FeatureGen(submit), max_queue_size=20, workers=10, verbose=0)
+    score   = head_model.predict_generator(ScoreGen(fknown, fsubmit), max_queue_size=20, workers=10, verbose=0)
+    score   = score_reshape(score, fknown, fsubmit)
+
+    # Generate the subsmission file.
+    prepare_submission(0.99, 'mpiotte-standard.csv.gz')
