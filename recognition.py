@@ -20,10 +20,9 @@ try:
     sys.stderr = open(os.devnull, "w")
     import keras
     sys.stderr = old_stderr
-except:
-    print("ds")
-
-
+except Exception as e:
+    print (e.__doc__)
+    print (e.message)
 
 import random
 from keras import backend as K
@@ -420,6 +419,13 @@ for i,t in enumerate(train): t2i[t] = i
 
 len(train),len(w2ts)
 
+from keras.utils import Sequence
+
+# First try to use lapjv Linear Assignment Problem solver as it is much faster.
+# At the time I am writing this, kaggle kernel with custom package fail to commit.
+# scipy can be used as a fallback, but it is too slow to run this kernel under the time limit
+# As a workaround, use scipy with data partitioning.
+# Because algorithm is O(n^3), small partitions are much faster, but not what produced the submitted solution
 try:
     from lap import lapjv
     segment = False
@@ -510,13 +516,11 @@ class TrainingData(Sequence):
     def __len__(self):
         return (len(self.match) + len(self.unmatch) + self.batch_size - 1)//self.batch_size
 
-
-    # Test on a batch of 32 with random costs.
+# Test on a batch of 32 with random costs.
 score = np.random.random_sample(size=(len(train),len(train)))
 data = TrainingData(score)
 (a, b), c = data[0]
 a.shape, b.shape, c.shape
-
 
 # First pair is for matching whale
 imgs = [array_to_img(a[0]), array_to_img(b[0])]
@@ -576,6 +580,8 @@ class ScoreGen(Sequence):
         return [a,b]
     def __len__(self):
         return (len(self.ix) + self.batch_size - 1)//self.batch_size
+
+from keras_tqdm import TQDMNotebookCallback
 
 def set_lr(model, lr):
     K.set_value(model.optimizer.lr, float(lr))
@@ -661,8 +667,8 @@ model_name = 'mpiotte-standard'
 histories  = []
 steps      = 0
 
-if isfile('../Bluewhale/mpiotte-standard.model'):
-    tmp = keras.models.load_model('../Bluewhale/mpiotte-standard.model')
+if isfile('mpiotte-standard.model'):
+    tmp = keras.models.load_model('mpiotte-standard.model')
     model.set_weights(tmp.get_weights())
 else:
     # epoch -> 10
@@ -760,4 +766,5 @@ if False:
     score   = score_reshape(score, fknown, fsubmit)
 
     # Generate the subsmission file.
+    print("gen")
     prepare_submission(0.99, 'mpiotte-standard.csv.gz')
