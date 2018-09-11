@@ -12,7 +12,7 @@ import numpy as np
 from imagehash import phash
 from math import sqrt
 import gzip
-
+from keras_tqdm import TQDMNotebookCallback
 
 try:
     import sys
@@ -43,10 +43,13 @@ from keras_tqdm import TQDMNotebookCallback
 
 import gzip
 
-tagged = dict([(p,w) for _,p,w in read_csv('../Bluewhale/train.csv').to_records()])
-submit = [p for _,p,_ in read_csv('../Bluewhale/sample_submission.csv').to_records()]
-join   = list(tagged.keys()) + submit
-len(tagged),len(submit),len(join),list(tagged.items())[:5],submit[:5]
+train_data = dict([(p,w) for _,p,w in read_csv('../Bluewhale/train.csv').to_records()])
+
+#there is a sample sumbission it oncludes all the test images
+test_data = [p for _,p,_ in read_csv('../Bluewhale/sample_submission.csv').to_records()]
+join   = list(train_data.keys()) + test_data
+
+#len(train_data),len(test_data),len(join),list(train_data.items())[:5],test_data[:5]
 
 def expand_path(p):
     if isfile('../Bluewhale/train/' + p): return '../Bluewhale/train/' + p
@@ -64,7 +67,10 @@ def match(h1,h2):
         for p2 in h2ps[h2]:
             i1 =  pil_image.open(expand_path(p1))
             i2 =  pil_image.open(expand_path(p2))
-            if i1.mode != i2.mode or i1.size != i2.size: return False
+
+            #the pixelwise mean square error between the normalized images is below a given threshold.
+            if i1.mode != i2.mode or i1.size != i2.size: 
+                return False
             a1 = np.array(i1)
             a1 = a1 - a1.mean()
             a1 = a1/sqrt((a1**2).mean())
@@ -72,9 +78,11 @@ def match(h1,h2):
             a2 = a2 - a2.mean()
             a2 = a2/sqrt((a2**2).mean())
             a  = ((a1 - a2)**2).mean()
-            if a > 0.1: return False
+            if a > 0.1: 
+                return False
     return True
-
+print("creating hashes of images...")
+#pickle file save previous execution p2h array(image hashes)
 if isfile('p2h.pickle'):
     with open('p2h.pickle', 'rb') as f:
         p2h = pickle.load(f)
@@ -118,6 +126,7 @@ h2ps = {}
 for p,h in p2h.items():
     if h not in h2ps: h2ps[h] = []
     if p not in h2ps[h]: h2ps[h].append(p)
+
 # Notice how 25460 images use only 20913 distinct image ids.
 len(h2ps),list(h2ps.items())[:5]
 
@@ -128,7 +137,7 @@ def show_whale(imgs, per_row=2):
     fig, axes = plt.subplots(rows,cols, figsize=(24//per_row*cols,24//per_row*rows))
     for ax in axes.flatten(): ax.axis('off')
     for i,(img,ax) in enumerate(zip(imgs, axes.flatten())): ax.imshow(img.convert('RGB'))
-    #plt.show()
+    plt.show()
 
 for h, ps in h2ps.items():
     if len(ps) > 2:
@@ -150,6 +159,7 @@ def prefer(ps):
             best_s = s
     return best_p
 
+print("selecting preferd image from duplicate images....")
 h2p = {}
 for h,ps in h2ps.items(): h2p[h] = prefer(ps)
 len(h2p),list(h2p.items())[:5]
@@ -168,6 +178,7 @@ imgs = [pil_image.open(expand_path(p)), read_raw_image(p)]
 show_whale(imgs)
 
 # Read the bounding box data from the bounding box kernel (see reference above)
+print("excute bounding model...")
 with open('bounding-box.pickle', 'rb') as f:
     p2bb = pickle.load(f)
 list(p2bb.items())[:5]
@@ -265,12 +276,13 @@ def read_for_validation(p):
     """
     return read_cropped_image(p, False)
 
-p = list(tagged.keys())[312]
+p = list(train_data.keys())[312]
 imgs = [
     read_raw_image(p),
     array_to_img(read_for_validation(p)),
     array_to_img(read_for_training(p))
 ]
+
 show_whale(imgs, per_row=3)
 
 def subblock(x, filter, **kwargs):
@@ -373,7 +385,7 @@ show_whale([read_raw_image(p) for p in exclude], per_row=5)
 # Find all the whales associated with an image id. It can be ambiguous as duplicate images may have different whale ids.
 h2ws = {}
 new_whale = 'new_whale'
-for p,w in tagged.items():
+for p,w in train_data.items():
     if w != new_whale: # Use only identified whales
         h = p2h[p]
         if h not in h2ws: h2ws[h] = []
@@ -425,7 +437,7 @@ from keras.utils import Sequence
 # At the time I am writing this, kaggle kernel with custom package fail to commit.
 # scipy can be used as a fallback, but it is too slow to run this kernel under the time limit
 # As a workaround, use scipy with data partitioning.
-# Because algorithm is O(n^3), small partitions are much faster, but not what produced the submitted solution
+# Because algorithm is O(n^3), small partitions are much faster, but not what produced the test_datated solution
 try:
     from lap import lapjv
     segment = False
@@ -581,7 +593,7 @@ class ScoreGen(Sequence):
     def __len__(self):
         return (len(self.ix) + self.batch_size - 1)//self.batch_size
 
-from keras_tqdm import TQDMNotebookCallback
+
 
 def set_lr(model, lr):
     K.set_value(model.optimizer.lr, float(lr))
@@ -718,7 +730,7 @@ def prepare_submission(threshold, filename):
     pos   = [0,0,0,0,0,0]
     with gzip.open(filename, 'wt', newline='\n') as f:
         f.write('Image,Id\n')
-        for i,p in enumerate(tqdm_notebook(submit)):
+        for i,p in enumerate(tqdm_notebook(test_data)):
             t = []
             s = set()
             a = score[i,:]
@@ -748,7 +760,7 @@ def prepare_submission(threshold, filename):
 if False:
     # Find elements from training sets not 'new_whale'
     h2ws = {}
-    for p,w in tagged.items():
+    for p,w in train_data.items():
         if w != new_whale: # Use only identified whales
             h = p2h[p]
             if h not in h2ws: h2ws[h] = []
@@ -761,9 +773,9 @@ if False:
 
     # Evaluate the model.
     fknown  = branch_model.predict_generator(FeatureGen(known), max_queue_size=20, workers=10, verbose=0)
-    fsubmit = branch_model.predict_generator(FeatureGen(submit), max_queue_size=20, workers=10, verbose=0)
-    score   = head_model.predict_generator(ScoreGen(fknown, fsubmit), max_queue_size=20, workers=10, verbose=0)
-    score   = score_reshape(score, fknown, fsubmit)
+    ftest_data = branch_model.predict_generator(FeatureGen(test_data), max_queue_size=20, workers=10, verbose=0)
+    score   = head_model.predict_generator(ScoreGen(fknown, ftest_data), max_queue_size=20, workers=10, verbose=0)
+    score   = score_reshape(score, fknown, ftest_data)
 
     # Generate the subsmission file.
     print("gen")

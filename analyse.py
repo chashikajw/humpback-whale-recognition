@@ -2,6 +2,7 @@ import time
 
 import pandas as pd
 import numpy as np
+import os
 
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
@@ -12,6 +13,7 @@ from os import listdir
 from os.path import isfile, join
 import seaborn as sns
 sns.set(color_codes=True)
+import random
 
 from PIL import Image
 
@@ -29,25 +31,20 @@ my_path = "../Bluewhale/test"
 
 only_images = [f for f in listdir(my_path) if isfile(join(my_path, f))]
 
-#@interact(ix=widgets.IntSlider(min=0, max=len(only_images), step=1, value=0, continuous_update=False))
-def show_test_images(ix):
-    
-    clear_output(wait=True)
-    
-    how_many = 9
-    hm_sq = int(np.sqrt(how_many))
-    
-    f, axes = plt.subplots(hm_sq, hm_sq)
-    f.set_size_inches(18, 12)
-    
-    for nr, i in enumerate(range(ix, ix + how_many)):
-        image_path = "../Bluewhale/test/" + only_images[i]
-        
-        axes[int(nr / hm_sq)][nr % hm_sq].imshow(
-            mpimg.imread(image_path)
-        )
-        
-    plt.show()
+figWidth = figHeight = 10
+#sample a couple of pictures
+numSampled = 4
+sampledPicNames = random.sample(os.listdir(my_path),numSampled)
+#then read the images
+readImages = [mpimg.imread(my_path + os.sep + sampledPicNames[i])
+             for i in range(len(sampledPicNames))]
+#then plot
+fig, subplots = plt.subplots(2,2)
+fig.set_size_inches(figWidth,figHeight)
+for i in range(len(readImages)):
+    subplots[int(i / 2),i % 2].imshow(readImages[i])
+plt.show()
+
 
 print("**********************************************************************")
 
