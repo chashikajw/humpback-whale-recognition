@@ -661,7 +661,7 @@ def make_steps(step, ampl):
     
     # Train the model for 'step' epochs
     history = model.fit_generator(
-        TrainingData(score + ampl*np.random.random_sample(size=score.shape), steps=step, batch_size=100),
+        TrainingData(score + ampl*np.random.random_sample(size=score.shape), steps=step, batch_size=32),
         initial_epoch=steps, epochs=steps + step, max_queue_size=12, workers=6, verbose=0,
         callbacks=[
             TQDMNotebookCallback(leave_inner=True, metric_format='{value:0.3f}')
