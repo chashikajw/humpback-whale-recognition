@@ -737,7 +737,7 @@ def prepare_submission(threshold, filename):
             f.write(p + ',' + ' '.join(t[:5]) + '\n')
     return vtop,vhigh,pos
 
-if False:
+if True:
     # Find elements from training sets not 'new_whale'
     h2ws = {}
     for p,w in train_data.items():
