@@ -679,7 +679,8 @@ model_name = 'mpiotte-standard'
 histories  = []
 steps      = 0
 
-if isfile('mpiotte-standard.model'):
+#if isfile('mpiotte-standard.model'):
+if False:
     tmp = keras.models.load_model('mpiotte-standard.model')
     model.set_weights(tmp.get_weights())
 else:
