@@ -661,7 +661,7 @@ def make_steps(step, ampl):
     
     # Train the model for 'step' epochs
     history = model.fit_generator(
-        TrainingData(score + ampl*np.random.random_sample(size=score.shape), steps=step, batch_size=32),
+        TrainingData(score + ampl*np.random.random_sample(size=score.shape), steps=step, batch_size=1000),
         initial_epoch=steps, epochs=steps + step, max_queue_size=12, workers=6, verbose=0,
         callbacks=[
             TQDMNotebookCallback(leave_inner=True, metric_format='{value:0.3f}')
@@ -686,35 +686,15 @@ else:
     # epoch -> 10
     make_steps(10, 1000)
     ampl = 100.0
-    for _ in range(10):
-        print('noise ampl.  = ', ampl)
-        make_steps(5, ampl)
-        ampl = max(1.0, 100**-0.1*ampl)
-    # epoch -> 150
-    for _ in range(18): make_steps(5, 1.0)
-    # epoch -> 200
-    set_lr(model, 16e-5)
-    for _ in range(10): make_steps(5, 0.5)
-    # epoch -> 240
-    set_lr(model, 4e-5)
-    for _ in range(8): make_steps(5, 0.25)
-    # epoch -> 250
-    set_lr(model, 1e-5)
-    for _ in range(2): make_steps(5, 0.25)
-    # epoch -> 300
+    
+    
     weights = model.get_weights()
     model, branch_model, head_model = build_model(64e-5,0.0002)
     model.set_weights(weights)
-    for _ in range(10): make_steps(5, 1.0)
-    # epoch -> 350
+    # epoch -> 200
     set_lr(model, 16e-5)
-    for _ in range(10): make_steps(5, 0.5)    
-    # epoch -> 390
-    set_lr(model, 4e-5)
-    for _ in range(8): make_steps(5, 0.25)
-    # epoch -> 400
-    set_lr(model, 1e-5)
-    for _ in range(2): make_steps(5, 0.25)
+   
+   
     model.save('mpiotte-standard.model')
 
 
